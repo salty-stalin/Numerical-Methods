@@ -1,0 +1,13 @@
+#%%
+
+# compute determinant
+print('det A =', numpy.linalg.det(A))
+
+# Compute eigenvectors
+eigvals, eigvecs = numpy.linalg.eig(A)
+print('eigvals =', eigvals)
+print('eigvecs =', eigvecs)
+for index in range(3):
+    print('testing eigenvector', index)
+    print('A v =', numpy.dot(A,eigvecs[:,index]))
+    print('lambda v =', eigvals[index]*eigvecs[:,index])
