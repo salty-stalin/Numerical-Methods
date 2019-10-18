@@ -1,0 +1,10 @@
+#%%
+import scipy.integrate
+
+# Quadrature
+def integrand(x):
+    return numpy.sqrt(1 - x**2)
+integral = scipy.integrate.quad(integrand, 0, 1)
+print('integral =', integral)
+
+#first return is integral value, second is absolute error
