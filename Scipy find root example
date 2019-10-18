@@ -1,0 +1,10 @@
+#%%
+import scipy
+import scipy.optimize
+
+# Root finding
+def f(x):
+    return numpy.exp(x) + x - 2
+root = scipy.optimize.brentq(f, 0, 1)
+print('root =', root)
+print(f(root))
