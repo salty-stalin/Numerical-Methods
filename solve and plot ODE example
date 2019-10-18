@@ -1,0 +1,10 @@
+#%%
+from matplotlib import pyplot
+
+# IVP dy / dx = -y with y(0) = 1
+def dydx(y, x):
+    return -y
+x = numpy.linspace(0, 10)
+y = scipy.integrate.odeint(dydx, 1, x)
+# plot with black crosses, blue line
+pyplot.plot(x, y, 'kx', x, numpy.exp(-x), 'b-')
