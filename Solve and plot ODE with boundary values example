@@ -1,0 +1,15 @@
+#%%
+
+# IVP dy/dx = - y * int_0^x sin^2(s) ds with y(0) = 1
+
+def integrand_v2(s):
+    return numpy.sin(s)**2
+
+def dydx_v2(y, x):
+    integral = scipy.integrate.quad(integrand_v2,0, x)                               
+    return -y * integral[0]
+
+x = numpy.linspace(0, 10)
+y = scipy.integrate.odeint(dydx_v2, 1, x)
+pyplot.figure()
+pyplot.plot(x, y, 'kx')
