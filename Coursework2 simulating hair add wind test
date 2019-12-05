@@ -1,0 +1,134 @@
+from mpl_toolkits.mplot3d import Axes3D  
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+from scipy import integrate
+
+
+R=10 #10 cm radius sphere to model as head
+L = 4 #4cm Lenght of induvidual hair 
+F_x=0.1 #force from the wind relative to the bending stiffness of the hair.
+F_g=0.1 #gravity relative to the bending stiffness of the hair
+N=50 #Select Number of Hairs
+Theta_O=np.linspace( 0,np.pi,N) #generate 20 hairs
+Phi_O=np.linspace( 0,np.pi,N)
+print(Theta_O)
+def hair_start_position(R,Theta_O,Phi_O):
+    x=R*np.cos(Theta_O)*np.cos(Phi_O)
+    y=-R*np.cos(Theta_O)*np.sin(Phi_O)
+    z=R*np.sin(Theta_O)
+    return x,y,z
+
+x0,y0,z0=hair_start_position(R,Theta_O,Phi_O)
+print(x0)
+print(y0)
+print(z0)
+s = np.linspace(0, 4, 100)
+def final_cond( alpha_0,beta_0,theta_0,phi_0,s,F_g,F_x):
+    initial_array=np.array([theta_0,phi_0,alpha_0,beta_0])
+    z=integrate.odeint(dzds, initial_array, s,args=(F_g,F_x))
+    print("PRINTING Z")
+    print(z)
+    return z[-1][2],z[-1][3]
+
+def dzds(theta_alpha,s):
+    theta=theta_alpha[0]
+    phi=theta_alpha[1]
+    alpha=theta_alpha[2]
+    beta=theta_alpha[3]
+    theta_alpha_prime=np.empty(shape=(4))
+    theta_alpha_prime[0]=alpha
+    theta_alpha_prime[1]=beta
+    theta_alpha_prime[2]=s*F_g*np.cos(theta)+s*F_x*np.sin(theta)*np.cos(phi)
+    theta_alpha_prime[3]=-s*F_x*np.sin(phi)*np.sin(theta)
+    
+    return theta_alpha_prime
+
+
+hair_x=np.empty(shape=(100,N-1))
+hair_y=np.empty(shape=(100,N-1))
+hair_z=np.empty(shape=(100,N-1))
+for j in range(N-1):
+    z=np.empty(shape=(N,100))
+    alpha_0,beta_0=scipy.optimize.fsolve(final_cond,np.array([0.0,0.0]),args=((Theta_O[j],Phi_O[j],s,F_g,F_x)))
+    print(alpha_0)
+    z=integrate.odeint(dzds,np.array([Theta_O[j],Phi_O[j],alpha_0,beta_0],s))   
+    
+    theta=z[:,0]
+    phi=z[:,1]
+    dxds=np.cos(theta)*np.cos(phi)
+    dyds=-np.cos(theta)*np.sin(phi)
+    DZDS=np.sin(theta)
+    x=np.empty(100)
+    y=np.empty(100)
+    Z=np.empty(100)
+    ds=0.04
+    x[0]=x0[j]
+    y[0]=y0[j]
+    Z[0]=z0[j]
+    for i in range(99):
+        x[i+1]=x[i]+ds*dxds[i]
+        y[i+1]=y[i]+ds*dyds[i]
+        Z[i+1]=Z[i]+ds*DZDS[i]
+    hair_x[:,j]=x
+    hair_y[:,j]=y
+    hair_z[:,j]=Z
+
+from matplotlib import pyplot
+
+pyplot.plot(hair_x[:,0],hair_z[:,0])
+pyplot.xlabel(r"$x$")
+pyplot.ylabel(r"$Z$")
+pyplot.show()
+
+
+
+"""
+# Create a sphere
+r = 10
+pi = np.pi
+cos = np.cos
+sin = np.sin
+phi, theta = np.mgrid[0.0:pi:100j, 0.0:2.0*pi:100j]
+x = r*sin(phi)*cos(theta)
+y = r*sin(phi)*sin(theta)
+z = r*cos(phi)
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(
+    x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
+
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+plt.show()
+"""
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_x, hair_z,s=1)
+ax.plot(x1, x2)
+ax.set_xlabel('X Label')
+ax.set_ylabel('Z Label')
+plt.show()
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_y, hair_z,s=1)
+ax.plot(x1, x2)
+ax.set_xlabel('X Label')
+ax.set_ylabel('Z Label')
+plt.show()
