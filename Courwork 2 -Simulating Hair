@@ -1,0 +1,110 @@
+
+from mpl_toolkits.mplot3d import Axes3D  
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+from scipy import integrate
+
+
+R=10 #10 cm radius sphere to model as head
+L = 4 #4cm Lenght of induvidual hair 
+F_x=0 #force from the wind relative to the bending stiffness of the hair.
+F_g=0.1 #gravity relative to the bending stiffness of the hair
+N=20 #Select Number of Hairs
+Theta_O=np.linspace( 0,np.pi,N) #generate 20 hairs
+Phi_O=0
+print(Theta_O)
+def hair_start_position(R,Theta_O,Phi_O):
+    x=R*np.cos(Theta_O)*np.cos(Phi_O)
+    y=-R*np.cos(Theta_O)*np.sin(Phi_O)
+    z=R*np.sin(Theta_O)
+    return x,y,z
+
+x0,y0,z0=hair_start_position(R,Theta_O,Phi_O)
+print(x0)
+print(y0)
+print(z0)
+
+def final_cond( alpha_0,theta_0,s):
+    initial_array=np.array([theta_0,alpha_0])
+    z=integrate.odeint(dzds, initial_array, s)
+    return z[-1][1]
+
+def dzds(theta_alpha,s):
+    theta=theta_alpha[0]
+    alpha=theta_alpha[1]
+    theta_alpha_prime=np.empty(shape=(2))
+    theta_alpha_prime[0]=alpha
+    theta_alpha_prime[1]=s*F_g*np.cos(theta)+s*F_x*np.sin(theta)
+    return theta_alpha_prime
+
+s = np.linspace(0, 4, 100)
+z=np.empty(shape=(N,100))
+
+
+
+
+alpha_0=scipy.optimize.brentq(final_cond,-1,1,args=(Theta_O[0],s))
+
+z=integrate.odeint(dzds,np.array([Theta_O[0],alpha_0]),s)
+print("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+print(z)   
+
+theta=z[:,0]
+print(theta)
+dxds=np.cos(theta)
+DZDS=np.sin(theta)
+x=np.empty(100)
+Z=np.empty(100)
+ds=0.04
+x[0]=x0[0]
+Z[0]=z0[0]
+for i in range(99):
+    x[i+1]=x[i]+ds*dxds[i]
+    Z[i+1]=Z[i]+ds*DZDS[i]
+    
+
+from matplotlib import pyplot
+
+pyplot.plot(x, Z)
+pyplot.xlabel(r"$x$")
+pyplot.ylabel(r"$Z$")
+pyplot.show()
+
+
+
+"""
+# Create a sphere
+r = 10
+pi = np.pi
+cos = np.cos
+sin = np.sin
+phi, theta = np.mgrid[0.0:pi:100j, 0.0:2.0*pi:100j]
+x = r*sin(phi)*cos(theta)
+y = r*sin(phi)*sin(theta)
+z = r*cos(phi)
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(
+    x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
+
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+plt.show()
+"""
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(x, Z)
+ax.plot(x1, x2)
+ax.set_xlabel('X Label')
+ax.set_ylabel('Z Label')
+plt.show()
