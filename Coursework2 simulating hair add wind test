@@ -25,14 +25,14 @@ print(x0)
 print(y0)
 print(z0)
 s = np.linspace(0, 4, 100)
-def final_cond( alpha_0,beta_0,theta_0,phi_0,s,F_g,F_x):
-    initial_array=np.array([theta_0,phi_0,alpha_0,beta_0])
+def final_cond( initial,theta_0,phi_0,s,F_g,F_x):
+    initial_array=np.array([theta_0,phi_0,initial[0],initial[1]])
     z=integrate.odeint(dzds, initial_array, s,args=(F_g,F_x))
     print("PRINTING Z")
     print(z)
-    return z[-1][2],z[-1][3]
+    return ([z[-1][2],z[-1][3]])
 
-def dzds(theta_alpha,s):
+def dzds(theta_alpha,s,F_x,F_g):
     theta=theta_alpha[0]
     phi=theta_alpha[1]
     alpha=theta_alpha[2]
@@ -51,9 +51,9 @@ hair_y=np.empty(shape=(100,N-1))
 hair_z=np.empty(shape=(100,N-1))
 for j in range(N-1):
     z=np.empty(shape=(N,100))
-    alpha_0,beta_0=scipy.optimize.fsolve(final_cond,np.array([0.0,0.0]),args=((Theta_O[j],Phi_O[j],s,F_g,F_x)))
+    alpha_0=scipy.optimize.fsolve(final_cond,np.array([0.0,0.0]),args=((Theta_O[j],Phi_O[j],s,F_g,F_x)))
     print(alpha_0)
-    z=integrate.odeint(dzds,np.array([Theta_O[j],Phi_O[j],alpha_0,beta_0],s))   
+    z=integrate.odeint(dzds,np.array([Theta_O[j],Phi_O[j],alpha_0[0],alpha_0[1]]),s,args=(F_g,F_x))   
     
     theta=z[:,0]
     phi=z[:,1]
@@ -84,28 +84,6 @@ pyplot.show()
 
 
 
-"""
-# Create a sphere
-r = 10
-pi = np.pi
-cos = np.cos
-sin = np.sin
-phi, theta = np.mgrid[0.0:pi:100j, 0.0:2.0*pi:100j]
-x = r*sin(phi)*cos(theta)
-y = r*sin(phi)*sin(theta)
-z = r*cos(phi)
-
-
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(
-    x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
-
-ax.set_xlabel('X Label')
-ax.set_ylabel('Y Label')
-ax.set_zlabel('Z Label')
-plt.show()
-"""
 fig = plt.figure()
 ax = fig.add_subplot(111)
 
@@ -129,6 +107,30 @@ x1 = r*np.cos(theta)
 x2 = r*np.sin(theta)
 ax.scatter(hair_y, hair_z,s=1)
 ax.plot(x1, x2)
-ax.set_xlabel('X Label')
+ax.set_xlabel('Y Label')
 ax.set_ylabel('Z Label')
+plt.show()
+
+
+
+
+# Create a sphere
+r = 10
+pi = np.pi
+cos = np.cos
+sin = np.sin
+phi, theta = np.mgrid[0.0:pi:100j, 0.0:2.0*pi:100j]
+x = r*sin(phi)*cos(theta)
+y = r*sin(phi)*sin(theta)
+z = r*cos(phi)
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(
+    x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
+ax.scatter(hair_x,hair_y,hair_z)
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
 plt.show()
