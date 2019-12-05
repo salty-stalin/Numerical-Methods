@@ -8,10 +8,10 @@ from scipy import integrate
 
 R=10 #10 cm radius sphere to model as head
 L = 4 #4cm Lenght of induvidual hair 
-F_x=0.1 #force from the wind relative to the bending stiffness of the hair.
+F_x=0.05 #force from the wind relative to the bending stiffness of the hair.
 F_g=0.1 #gravity relative to the bending stiffness of the hair
-N=50 #Select Number of Hairs
-Theta_O=np.linspace( 0,np.pi,N) #generate 20 hairs
+N=100 #Select Number of Hairs
+Theta_O=np.linspace( 0,0.49*np.pi,N) #generate 20 hairs
 Phi_O=np.linspace( 0,np.pi,N)
 print(Theta_O)
 def hair_start_position(R,Theta_O,Phi_O):
