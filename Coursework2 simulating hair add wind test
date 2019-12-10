@@ -7,24 +7,19 @@ from scipy import integrate
 
 
 R=10 #10 cm radius sphere to model as head
-L = 4 #4cm Lenght of induvidual hair 
+L = 50 #4cm Lenght of induvidual hair 
 F_x=0.05 #force from the wind relative to the bending stiffness of the hair.
 F_g=0.1 #gravity relative to the bending stiffness of the hair
 N=100 #Select Number of Hairs
-Theta_O=np.linspace( 0,0.49*np.pi,N) #generate 20 hairs
-Phi_O=np.linspace( 0,np.pi,N)
-print(Theta_O)
+"""
+Theta_O=np.linspace( 0,0.49*np.pi,10) #generate 20 hairs
+Phi_O=np.linspace( 0,np.pi,10)
+"""
 def hair_start_position(R,Theta_O,Phi_O):
     x=R*np.cos(Theta_O)*np.cos(Phi_O)
     y=-R*np.cos(Theta_O)*np.sin(Phi_O)
     z=R*np.sin(Theta_O)
     return x,y,z
-
-x0,y0,z0=hair_start_position(R,Theta_O,Phi_O)
-print(x0)
-print(y0)
-print(z0)
-s = np.linspace(0, 4, 100)
 def final_cond( initial,theta_0,phi_0,s,F_g,F_x):
     initial_array=np.array([theta_0,phi_0,initial[0],initial[1]])
     z=integrate.odeint(dzds, initial_array, s,args=(F_g,F_x))
@@ -44,6 +39,26 @@ def dzds(theta_alpha,s,F_x,F_g):
     theta_alpha_prime[3]=-s*F_x*np.sin(phi)*np.sin(theta)
     
     return theta_alpha_prime
+
+
+
+
+Theta_O=np.array([0])
+Phi_O=np.array([0])
+
+for h in range(N-1):
+    Theta_O=np.append(Theta_O,np.random.uniform(0,0.49*np.pi))
+    Phi_O=np.append(Phi_O,np.random.uniform(0,np.pi))
+
+
+
+
+x0,y0,z0=hair_start_position(R,Theta_O,Phi_O)
+print(x0)
+print(y0)
+print(z0)
+
+s = np.linspace(0, 4, 100)
 
 
 hair_x=np.empty(shape=(100,N-1))
@@ -129,7 +144,7 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 ax.plot_surface(
     x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
-ax.scatter(hair_x,hair_y,hair_z)
+ax.scatter(hair_x,hair_y,hair_z, marker=",")
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
