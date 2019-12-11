@@ -1,0 +1,459 @@
+# -*- coding: utf-8 -*-
+"""
+Coursework 1 solutions
+"""
+
+from __future__ import division
+import numpy
+from matplotlib import pyplot
+from matplotlib import rcParams
+
+rcParams['font.family'] = 'serif'
+rcParams['font.size'] = 16
+rcParams['figure.figsize'] = (12,6)
+
+printing = False
+
+def stiff_system(x):
+    """
+    b vector definition in first case.
+
+    Parameters
+    ----------
+
+    x : float
+        Coordinate
+    
+    Returns
+    -------
+    
+    b : array of float
+        Just zeros in this case
+    """
+
+    assert((not numpy.any(numpy.isnan(x))) and numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x))), \
+    "x must be real, finite and not NaN"
+    
+    return numpy.zeros((2,))
+
+def stiff_system_2(x):
+    """
+    b vector definition in second case.
+
+    Parameters
+    ----------
+
+    x : float
+        Coordinate
+    
+    Returns
+    -------
+    
+    b : array of float
+        b as given by equation (13)
+    """
+
+    assert((not numpy.any(numpy.isnan(x))) and numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x))), \
+    "x must be real, finite and not NaN"
+    
+    b = numpy.zeros((3,))
+    b[0] = -10.0 * numpy.sin(10.0*x) + numpy.cos(10.0*x)
+    b[1] = -10.0 * numpy.sin(10.0*x) + 199.0 * numpy.cos(10.0*x)
+    b[2] = 10000.0 * numpy.sin(10.0*x) + 208.0 * numpy.cos(10.0*x)
+
+    return b
+
+def rk3(A, bvector, y0, interval, N):
+    """
+    Solve the IVP y' = A y + b, y(0) = y0, in the interval,
+    using N steps of RK3.
+
+    Parameters
+    ----------
+
+    A : matrix
+        Partially defines ODE
+    b : function returning vector
+        Completes definition of ODE
+    y0 : vector
+        Initial data
+    interval : vector
+        Interval on which solution is required
+    N : int
+        Number of steps
+        
+    Returns
+    -------
+    
+    x : array of float
+        Coordinate locations of the approximate solution
+    y : array of float
+        Values of approximate solution at locations x
+    """
+
+    assert((not numpy.any(numpy.isnan(y0))) and numpy.all(numpy.isfinite(y0)) and\
+    numpy.all(numpy.isreal(y0))), \
+    "y0 must be real, finite"
+    nvar = len(y0)
+    assert(len(A) == nvar), "Size of A, y0 must match"
+    assert((not numpy.any(numpy.isnan(y0))) and numpy.all(numpy.isfinite(y0)) and\
+    numpy.all(numpy.isreal(y0))), \
+    "interval must be real, finite"
+    assert(len(interval) == 2), "Interval must have length 2"
+    assert(hasattr(bvector, '__call__')), \
+    "bvector must be a callable function"
+    assert(len(bvector(interval[0])) == nvar), \
+    "Return from bvector must match size of A"
+    assert((not numpy.any(numpy.isnan(N))) and numpy.all(numpy.isfinite(N)) and\
+    numpy.all(numpy.isreal(N)) and numpy.isscalar(N) and N > 0), \
+    "N must be integer, finite and scalar"
+
+    h = (interval[1] - interval[0]) / float(N)
+    x = numpy.linspace(interval[0], interval[1], N+1)
+
+    y = numpy.zeros((nvar, N+1))
+    y[:, 0] = y0
+
+    for i in range(1, N+1):
+        y1 = y[:, i-1] + h * (numpy.dot(A, y[:, i-1]) + bvector(x[i-1]))
+        y2 = (3.0 * y[:, i-1] + y1 +
+            h * (numpy.dot(A, y1) + bvector(x[i-1] + h))) / 4.0
+
+        y[:, i] = (y[:, i-1] + 2 * y2 +
+            2 * h * (numpy.dot(A, y2) + bvector(x[i-1] + h))) / 3.0
+
+    return x, y
+
+def dirk3(A, bvector, y0, interval, N):
+    """
+    Solve the IVP y' = A y + b, y(0) = y0, in the interval,
+    using N steps of DIRK3.
+
+    Parameters
+    ----------
+
+    A : matrix
+        Partially defines ODE
+    b : function returning vector
+        Completes definition of ODE
+    y0 : vector
+        Initial data
+    interval : vector
+        Interval on which solution is required
+    N : int
+        Number of steps
+        
+    Returns
+    -------
+    
+    x : array of float
+        Coordinate locations of the approximate solution
+    y : array of float
+        Values of approximate solution at locations x
+    """
+
+    assert((not numpy.any(numpy.isnan(y0))) and numpy.all(numpy.isfinite(y0)) and\
+    numpy.all(numpy.isreal(y0))), \
+    "y0 must be real, finite"
+    nvar = len(y0)
+    assert(len(A) == nvar), "Size of A, y0 must match"
+    assert((not numpy.any(numpy.isnan(y0))) and numpy.all(numpy.isfinite(y0)) and\
+    numpy.all(numpy.isreal(y0))), \
+    "interval must be real, finite"
+    assert(len(interval) == 2), "Interval must have length 2"
+    assert(hasattr(bvector, '__call__')), \
+    "bvector must be a callable function"
+    assert(len(bvector(interval[0])) == nvar), \
+    "Return from bvector must match size of A"
+    assert((not numpy.any(numpy.isnan(N))) and numpy.all(numpy.isfinite(N)) and\
+    numpy.all(numpy.isreal(N)) and numpy.isscalar(N) and N > 0), \
+    "N must be integer, finite and scalar"
+
+    # Set coefficients that are used in the DIRK algorithm.
+    mu = 0.5 * (1.0 - 1.0 / numpy.sqrt(3.0))
+    nu = 0.5 * (numpy.sqrt(3.0) - 1.0)
+    gamma = 1.5 / (3.0 + numpy.sqrt(3.0))
+    lamda = 1.5 * (1.0 + numpy.sqrt(3.0)) / (3.0 + numpy.sqrt(3.0))
+
+    h = (interval[1] - interval[0]) / float(N)
+    x = numpy.linspace(interval[0], interval[1], N+1)
+
+    y = numpy.zeros((nvar, N+1))
+    y[:, 0] = y0
+
+    for i in range(1, N+1):
+        M = numpy.eye(nvar) - h * mu * A
+        bb1 = y[:, i-1] + h * mu * bvector(x[i-1] + h * mu)
+        y1 = numpy.linalg.solve(M, bb1)
+
+        bb2 = y1 + \
+            h * nu * (numpy.dot(A, y1) + bvector(x[i-1] + h * mu)) + \
+            h * mu * bvector(x[i-1] + h * (nu + 2.0 * mu))
+        y2 = numpy.linalg.solve(M, bb2)
+
+        y[:, i] = (1 - lamda) * y[:, i-1] + lamda * y2 + \
+            h * gamma * (numpy.dot(A, y2) + \
+                        bvector(x[i-1] + h * (nu + 2.0 * mu)))
+
+    return x, y
+
+def exact_system1(x):
+    """
+    Exact solution for first system.
+
+    Parameters
+    ----------
+
+    x : vector
+        Coordinates
+    
+    Returns
+    -------
+    
+    y : array of float
+        Exact solution at coordinates x
+    """
+
+    assert((not numpy.any(numpy.isnan(x))) and numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x))), \
+    "x must be real, finite and not NaN"
+    
+    y1 = numpy.exp(-1000.0 * x)
+    y2 = (1000.0 / 999.0) * (numpy.exp(-x) - numpy.exp(-1000.0*x))
+
+    return numpy.vstack((y1,y2))
+
+def exact_system2(x):
+    """
+    Exact solution for second system.
+
+    Parameters
+    ----------
+
+    x : vector
+        Coordinates
+    
+    Returns
+    -------
+    
+    y : array of float
+        Exact solution at coordinates x
+    """
+
+    assert((not numpy.any(numpy.isnan(x))) and numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x))), \
+    "x must be real, finite and not NaN"
+    
+    y1 = numpy.cos(10.0*x) - numpy.exp(-x)
+    y2 = numpy.exp(-x) - numpy.exp(-100.0 * x) + numpy.cos(10.0 * x)
+    y3 = 2.0 * numpy.exp(-x) - numpy.exp(-100.0 * x) - \
+        numpy.exp(-10000.0 * x) + numpy.sin(10.0 * x)
+
+    return numpy.vstack((y1,y2,y3))
+
+def relative_error(y, y_exact, h, index):
+    """
+    Evaluate the relative error for a specific index, ignoring first point.
+
+    Parameters
+    ----------
+
+    y : array
+        Numerical data
+    y_exact : array
+        Exact solution
+    h : float
+        Grid spacing
+    index : int
+        Component of solution to compute error for
+        
+    Returns
+    -------
+    
+    y_error : array of float
+        Relative error as defined in equation (11)
+    """
+
+    assert((not numpy.any(numpy.isnan(y))) and numpy.all(numpy.isfinite(y)) and\
+    numpy.all(numpy.isreal(y))), \
+    "y must be real, finite and not NaN"
+    assert((not numpy.any(numpy.isnan(y_exact))) and \
+    numpy.all(numpy.isfinite(y_exact)) and\
+    numpy.all(numpy.isreal(y_exact))), \
+    "y_exact must be real, finite and not NaN"
+    assert((not numpy.any(numpy.isnan(h))) and numpy.all(numpy.isfinite(h)) and\
+    numpy.all(numpy.isreal(h)) and numpy.isscalar(h) and h > 0), \
+    "h must be real, positive, finite and scalar"
+    
+    return h * numpy.sum(numpy.abs((y_exact[index, 1:] - y[index, 1:]) /
+        y_exact[index, 1:]))
+
+def plot_problem(y, y_exact, solver):
+    """
+    Plot solution to the problems.
+
+    Parameters
+    ----------
+
+    y : array
+        Numerical data
+    y_exact : array
+        Exact solution
+    solver : string
+        Name of the solver
+    
+    Returns
+    -------
+    
+    fig : matplotlib fig
+        Figure containing approximate vs exact solution
+    """
+
+#    Whilst we would normally want the numerical data to be real, finite,
+#    not NaN, we can't use that here because of the RK3 stiff case.
+#    assert((not numpy.any(numpy.isnan(y))) and numpy.all(numpy.isfinite(y)) and\
+#    numpy.all(numpy.isreal(y))), \
+#    "y must be real, finite and not NaN"
+    assert((not numpy.any(numpy.isnan(y_exact))) and \
+    numpy.all(numpy.isfinite(y_exact)) and\
+    numpy.all(numpy.isreal(y_exact))), \
+    "y_exact must be real, finite and not NaN"
+    
+    nvar = len(y)
+    fig, axes = pyplot.subplots(nrows=1, ncols=nvar)
+    for var, axis in enumerate(axes):
+        if (var==0) and (nvar==2):
+            axis.semilogy(x, y[var,:], 'kx', x, y_exact[var,:], 'b-')
+        else:
+            axis.plot(x, y[var,:], 'kx', x, y_exact[var,:], 'b-')
+        axis.set_xlabel(r"$x$")
+        axis.set_ylabel(r"$y_{}$".format(var+1))
+        axis.set_xlim(interval[0], interval[1])
+        if (var==0):
+            axis.set_title("Solver is {}".format(solver))
+    fig.tight_layout()
+
+    return fig
+
+def plot_convergence(h, errors, solver, start=0):
+    """
+    Measure and plot the convergence rate
+
+    Parameters
+    ----------
+
+    h : vector
+        Step sizes
+    errors : vector
+        Absolute errors
+    solver : string
+        Name of solver
+    start : int
+        Point at which to start convergence calculation
+    
+    Returns
+    -------
+    
+    fig : matplotlib fig
+        Figure containing errors and measured convergence rate
+    """
+
+    assert((not numpy.any(numpy.isnan(errors))) and numpy.all(numpy.isfinite(errors)) and\
+    numpy.all(numpy.isreal(errors))), \
+    "errors must be real, finite and not NaN"
+    assert((not numpy.any(numpy.isnan(h))) and \
+    numpy.all(numpy.isfinite(h)) and\
+    numpy.all(numpy.isreal(h))), \
+    "h must be real, finite and not NaN"
+    assert((not numpy.any(numpy.isnan(start))) and numpy.all(numpy.isfinite(start)) and\
+    numpy.all(numpy.isreal(start)) and numpy.isscalar(start) and start >= 0), \
+    "start must be integer, finite and scalar"
+    
+    p = numpy.polyfit(numpy.log(h[start:]), numpy.log(errors[start:]), 1)
+    fig = pyplot.figure()
+    ax = fig.add_subplot(111)
+    ax.loglog(h, errors, 'kx')
+    ax.loglog(h, errors[-1]*(h/h[-1])**p[0], 'b-')
+    ax.set_xlabel(r"$h$")
+    ax.set_ylabel(r"$\|$Error$\|$")
+    ax.set_title("{} convergence rate {:.2f}".format(solver, p[0]))
+    fig.tight_layout()
+
+    return fig
+
+if __name__ == "__main__":
+    A1 = numpy.array([[-1000.0, 0.0],[1000.0, -1.0]])
+    interval = numpy.array([0.0, 0.1])
+    y0 = numpy.array([1.0, 0.0])
+    N_all = numpy.arange(40, 400, 40)
+    h_all = (interval[1] - interval[0]) / N_all
+    errors_rk = numpy.zeros_like(h_all)
+    errors_dirk = numpy.zeros_like(h_all)
+    for i, N in enumerate(N_all):
+        x, y_rk3 = rk3(A1, stiff_system, y0, interval, N)
+        y_exact = exact_system1(x)
+        x, y_dirk3 = dirk3(A1, stiff_system, y0, interval, N)
+        errors_rk[i] = relative_error(y_rk3, y_exact, h_all[i], 1)
+        errors_dirk[i] = relative_error(y_dirk3, y_exact, h_all[i], 1)
+    fig = plot_problem(y_rk3, y_exact, "RK3")
+    if printing:
+        pyplot.savefig('Cwk1_System1_RK3_Solution.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    fig = plot_problem(y_dirk3, y_exact, "DIRK3")
+    if printing:
+        pyplot.savefig('Cwk1_System1_DIRK3_Solution.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    fig = plot_convergence(h_all, errors_rk, "RK3", start=2)
+    if printing:
+        pyplot.savefig('Cwk1_System1_RK3_Converge.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    fig = plot_convergence(h_all, errors_dirk, "DIRK3")
+    if printing:
+        pyplot.savefig('Cwk1_System1_DIRK3_Converge.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+
+    # Stiffer problem
+    A2 = numpy.array([[-1.0, 0.0, 0.0],
+                      [-99.0, -100.0, 0.0],
+                      [-10098.0, 9900.0, -10000.0]])
+    y0 = numpy.array([0.0, 1.0, 0.0])
+    interval = numpy.array([0.0, 1.0])
+    N_all = numpy.arange(800, 3200, 200)
+    h_all = (interval[1] - interval[0]) / N_all
+    errors_rk = numpy.zeros_like(h_all)
+    errors_dirk = numpy.zeros_like(h_all)
+    for i, N in enumerate(N_all):
+        x, y_rk3 = rk3(A2, stiff_system_2, y0, interval, N)
+        y_exact = exact_system2(x)
+        x, y_dirk3 = dirk3(A2, stiff_system_2, y0, interval, N)
+        # Don't compute the RK3 error; not required, solver fails
+        #errors_rk[i] = relative_error(y_rk3, y_exact, h_all[i], 2)
+        errors_dirk[i] = relative_error(y_dirk3, y_exact, h_all[i], 2)
+    fig = plot_problem(y_rk3, y_exact, "RK3")
+    if printing:
+        pyplot.savefig('Cwk1_System2_RK3_Solution.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    fig = plot_problem(y_dirk3, y_exact, "DIRK3")
+    if printing:
+        pyplot.savefig('Cwk1_System2_DIRK3_Solution.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    fig = plot_convergence(h_all, errors_dirk, "DIRK3", start=2)
+    if printing:
+        pyplot.savefig('Cwk1_System2_DIRK3_Converge.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
