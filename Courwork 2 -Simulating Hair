@@ -1,36 +1,126 @@
-from mpl_toolkits.mplot3d import Axes3D  
-
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 from scipy import integrate
-
+from scipy import arange
+import time
+from mpl_toolkits.mplot3d import Axes3D  
 
 R=10 #10 cm radius sphere to model as head
+
 L = 4 #4cm Lenght of induvidual hair 
-F_x=0.0 #force from the wind relative to the bending stiffness of the hair.
+
+F_x=0.0 #force from the wind relative to the bending stiffness of the hair from
+#from x direction
+
 F_g=0.1 #gravity relative to the bending stiffness of the hair
-N=50 #Select Number of Hairs
-Theta_O=np.linspace( 0,np.pi,N) #generate 20 hairs
-Phi_O=0
-print(Theta_O)
+
+N=20 #Select Number of Hairs
+
+Theta_O=np.linspace( 0,np.pi,N) #Latidude angles
+
+Phi_O=0  #longitude angles
+
+
+
 def hair_start_position(R,Theta_O,Phi_O):
+    
+    """
+    function to find starting cartesian coordinates of hairs on head. 
+    induvidual hairs come out right angled to the head
+
+    Parameters
+    ----------
+
+    R : Radius of head
+    
+    Theta_O:Latitude
+    
+    Phi_O: Longitude
+        
+    
+    Returns
+    -------
+    
+    x,y,z : arrays of size N with cartesian coordinate of starting position of hairs of N hairs
+    """
+    
     x=R*np.cos(Theta_O)*np.cos(Phi_O)
     y=-R*np.cos(Theta_O)*np.sin(Phi_O)
     z=R*np.sin(Theta_O)
+
     return x,y,z
 
-x0,y0,z0=hair_start_position(R,Theta_O,Phi_O)
-print(x0)
-print(y0)
-print(z0)
+x0,y0,z0=hair_start_position(R,Theta_O,Phi_O) #determine x,y,z position of 20 hairs
+
+
+"""
+
+    To simulatea Hair without the longiudinal freedom 
+    
+    Need to solve boundary value of the form 
+
+    d^2(Theta_O)/ds^2= s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    
+    This is a BVP with boundary values of Theta_O(0)=Theta_O dTheta/ds(L)=0
+    
+    To do this 2D ODE system needs to be solved described by the function dzds
+    with appropirite initial conditions for Theta(0) which is known and alpha(0) which is unknown
+    using integrate.odeint
+    
+    alpha(0) is calculated using scipy.optimise.brentq with the known value of alpha(L)=0
+    
+    In this case the 2D ODE system is
+                 d(theta)/ds=alpha
+                 d(alpha)/ds =s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    
+"""
+
+
+
+
 
 def final_cond( alpha_0,theta_0,s):
-    initial_array=np.array([theta_0,alpha_0])
-    z=integrate.odeint(dzds, initial_array, s)
+    
+    """solves alpha with any initial condition and returns value of alpha(L)n
+    
+     Parameters
+    ----------
+    alpha_0: initial condition for alpha
+    theta_0:  initial condition for theta
+        
+    
+    Returns
+    -------
+    
+    alpha(L): 
+    """
+    initial_array=np.array([theta_0,alpha_0]) 
+    z=integrate.odeint(dzds, initial_array, s)# solve ODE system retun alpha(L)
     return z[-1][1]
 
+
 def dzds(theta_alpha,s):
+    """function defining the 2 ODE system of the form
+    
+    Theta_O'= alpha
+    alpha'=s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    
+    where ' represent derivative with respect to s
+    
+    Parameters
+    ----------
+    theta_alpha:array of theta_alpha values as described in the sytem above
+    s: array of values describing position of hair lengh L
+    
+        
+    
+    Returns
+    -------
+    theta_alpha_prime:array of 2, derivatives of theta alpha i.e second part of the system
+    """
+
+    
     theta=theta_alpha[0]
     alpha=theta_alpha[1]
     theta_alpha_prime=np.empty(shape=(2))
@@ -38,34 +128,72 @@ def dzds(theta_alpha,s):
     theta_alpha_prime[1]=s*F_g*np.cos(theta)+s*F_x*np.sin(theta)
     return theta_alpha_prime
 
-s = np.linspace(0, 4, 100)
-hair_x=np.empty(shape=(100,N-1))
-hair_z=np.empty(shape=(100,N-1))
-for j in range(N-1):
-    z=np.empty(shape=(N,100))
-    alpha_0=scipy.optimize.brentq(final_cond,-1,1,args=(Theta_O[j],s))
-    z=integrate.odeint(dzds,np.array([Theta_O[j],alpha_0]),s)   
+s = np.linspace(0, 4, 100) #split hair of lenght L into 100 parts
+hair_x_task2=np.empty(shape=(100,N))#array to hold cartesian x coordinates of N hairs 
+hair_z_task2=np.empty(shape=(100,N))#array to hold cartesian z coordinates of N hairs 
+
+
+
+
+"""For loop to solve the ODE system for N hairs in this case 20 times
+   i.e. find position of 20 hairs
+   scipy.optimise.brentq  mehod is used as it returns the 0th value of the function
+   it also returns only 1 root which is ideal for this system
+   
+   """
     
-    theta=z[:,0]
+
+
+for j in range(N):
+    z=np.empty(shape=(N,100))#array of position of single hair
+    alpha_0=scipy.optimize.brentq(final_cond,-1,1,args=(Theta_O[j],s))#solve for alpha(0) needed to solve ODE system
+    z=integrate.odeint(dzds,np.array([Theta_O[j],alpha_0]),s)   #solve the ODE system with appropriete boundary values
+    #z retuns theta solutions of ODE
+    theta=z[:,0] #theta postion of hairs in this case theta is the spatial position in local space
+    
+    """
+    Need to find coordinates of hairs in cartesian axis this requires solving  
+    
+    dx/ds= cos(θ) cos(φ)
+    dy/ds= − cos(θ) sin(φ), 
+    dzds= sin(θ),
+    
+    in this case phi is 0 so only x,z need to be solved"""
+    
     dxds=np.cos(theta)
     DZDS=np.sin(theta)
     x=np.empty(100)
     Z=np.empty(100)
     ds=0.04
-    x[0]=x0[j]
+    "starting x,z position of induvidual hair.For loop goes through all 20 hairs"
+    x[0]=x0[j] 
     Z[0]=z0[j]
+    """I used the euler method to integrate the ODEs as it was the simples and easiest method
+    wih accurate solution for this simulation"""
+    
     for i in range(99):
         x[i+1]=x[i]+ds*dxds[i]
         Z[i+1]=Z[i]+ds*DZDS[i]
-    hair_x[:,j]=x
-    hair_z[:,j]=Z
+    
+    hair_x_task2[:,j]=x #array holding position of single hair in one column x axis (20 columns for 20 hairs)
+    hair_z_task2[:,j]=Z #array holding position of single hair in one column z axis (20 columns for 20 hairs)
 
 
+
+"""For Task3 wind is added Fx=0.1"""
 F_x=0.1
 s = np.linspace(0, 4, 100)
-hair_x_task3=np.empty(shape=(100,N-1))
-hair_z_task3=np.empty(shape=(100,N-1))
-for j in range(N-1):
+hair_x_task3=np.empty(shape=(100,N))
+hair_z_task3=np.empty(shape=(100,N))
+
+
+
+"""the postions of all the hairs needs to be calculated again as before.
+   I will not comment description as it is he same as before"""
+   
+
+
+for j in range(N):
     z=np.empty(shape=(N,100))
     alpha_0=scipy.optimize.brentq(final_cond,-1,1,args=(Theta_O[j],s))
     z=integrate.odeint(dzds,np.array([Theta_O[j],alpha_0]),s)   
@@ -83,9 +211,272 @@ for j in range(N-1):
         Z[i+1]=Z[i]+ds*DZDS[i]
     hair_x_task3[:,j]=x
     hair_z_task3[:,j]=Z
-from matplotlib import pyplot
+
+
+
+
+
+
+"""Task 4 and Task5 the longitudinal angle is added and so is the wind i.e F_x=0.05
+   Number of hairs is increased to a 100""" 
+F_x=0.05 #force from the wind relative to the bending stiffness of the hair.
+F_g=0.1 #gravity relative to the bending stiffness of the hair
+N=100 #Select Number of Hairs
+
+
+"""the 100 hairs have starting positions on a 10x10 grid mapped on the surface 
+of the sphere with theta [0,0.49pi] and phi[0,pi]""" 
+
+Theta_O=np.array([])#array of starting theta values 
+Phi_O=np.array([])#array of starting phi values
+
+
+"For loop to append all staring angles on 10x10 grid "
+"i.e. going through each point row by row"
+
+for h in arange(np.pi*0.1,np.pi+np.pi*0.1,np.pi*0.1):
+    for g in arange(0.049*np.pi,0.49*np.pi+0.049*np.pi,0.049*np.pi):
+        Theta_O=np.append(Theta_O,g)
+        Phi_O=np.append(Phi_O,h)
+
 
 """
+
+    To simulatea Hair with the longiudinal freedom 
+    
+    Need to solve boundary value of the form 
+
+    d^2(Theta_O)/ds^2= s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    d^2(phi_O)/ds^2=-s*F_x*sin(Phi_O)*sin(Theta_O)
+    
+    This is a BVP with boundary values of 
+    
+    Theta_O(0)=theta dTheta/ds(L)=0
+    Phi_O(0)=phi   dPhi/ds(L)= 0
+    
+    To do this 4D system needs to be solved described by the function dzds1
+    with appropirite initial condition for Theta(0),Phi(0) which are known 
+    and alpha(0) ,beta(0) which are unknown
+    
+    The 4D system to solve is  (' is derivative by ds)
+    
+    Theta'=alpha
+    phi'=beta
+    alpha'=s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    beta'=-s*F_x*sin(Phi_O)*sin(Theta_O)
+    
+    
+    alpha(0) is calculated using the known value of alpha(L)=0
+    beta(0)  is calculated using the known value of beta(L)=0
+    
+    In this case alpha=d(theta)/ds
+                 d(alpha)/ds =s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    
+"""
+
+
+
+def final_cond1( initial,theta_0,phi_0,s,F_g,F_x):
+
+    """solves alpha and beta with any initial condition and returns alpha(L) beta(L) 
+    
+     Parameters
+    ----------
+    initial:any initial values for alpha, beta
+    theta_0: any initial condition for theta
+    phi_0:initial codition for phi
+    s:measure of arc length along hair
+    F_g:gravity force
+    F_x:xdirection wind force
+    
+    Returns
+    -------
+    
+    alpha(L)
+    Beta(L)
+    """
+    
+    initial_array=np.array([theta_0,phi_0,initial[0],initial[1]])#initial array values
+    z=integrate.odeint(dzds1, initial_array, s,args=(F_g,F_x))#solve system for any initial values
+    print("PRINTING Z")
+    print(z)
+    return ([z[-1][2],z[-1][3]])#returns alpha(L) Beta(L)
+
+
+def dzds1(theta_alpha,s,F_x,F_g):
+    
+    """function defining the 4 ODE system of the form
+    
+    Theta'=alpha
+    phi'=beta
+    alpha'=s*F_g*cos(Theta_O)+s*F_x*sin(Phi_O)
+    beta'=-s*F_x*sin(Phi_O)*sin(Theta_O)
+    
+    where ' represent derivative with respect to s
+    
+    Parameters
+    ----------
+    theta_alpha:array of theta_alpha values as described in the sytem above
+    s: array of values describing position of hair lengh L
+    F_g:gravity force
+    F_x:xdirection wind force
+    s: s:measure of arc length along hair
+    
+        
+    
+    Returns
+    -------
+    theta_alpha_prime: array of 4 systems, derivatives of theta,phi alpha,beta 
+    i.e second part of the system
+    """
+
+    theta=theta_alpha[0]
+    phi=theta_alpha[1]
+    alpha=theta_alpha[2]
+    beta=theta_alpha[3]
+    theta_alpha_prime=np.empty(shape=(4))
+    theta_alpha_prime[0]=alpha
+    theta_alpha_prime[1]=beta
+    theta_alpha_prime[2]=s*F_g*np.cos(theta)+s*F_x*np.sin(theta)*np.cos(phi)
+    theta_alpha_prime[3]=-s*F_x*np.sin(phi)*np.sin(theta)
+    
+    return theta_alpha_prime
+
+
+"""
+
+Theta_O=np.array([0])
+Phi_O=np.array([0])
+
+for h in range(N-1):
+    Theta_O=np.append(Theta_O,np.random.uniform(0,0.49*np.pi))
+    Phi_O=np.append(Phi_O,np.random.uniform(0,np.pi))
+"""
+
+
+x1,y1,z11=hair_start_position(R,Theta_O,Phi_O)#cartesian starting position of hairs
+
+
+#time.sleep(20)
+s = np.linspace(0, 4, 100)
+
+"array to hold all hair cartesian postions"
+hair_x_task5=np.empty(shape=(100,N))
+hair_y_task5=np.empty(shape=(100,N))
+hair_z_task5=np.empty(shape=(100,N))
+
+"need to loop 100 times for 100 hairs with different initial positions for each"
+for j in range(N):
+    z1=np.empty(shape=(N,100))
+    "solve for initial condition array alpha(0) and Beta(0)"
+    alpha_0=scipy.optimize.fsolve(final_cond1,np.array([0.0,0.0]),args=((Theta_O[j],Phi_O[j],s,F_g,F_x)))
+    #brentq cant be used as it takes one variable fsolve can use a system
+    print(alpha_0)
+    "solve ODE system to get theta and phi solutions"
+    z1=integrate.odeint(dzds1,np.array([Theta_O[j],Phi_O[j],alpha_0[0],alpha_0[1]]),s,args=(F_g,F_x))   
+    #z1 solves the ODE system and returns theta, phi values of hair position
+    theta=z1[:,0]
+    phi=z1[:,1]
+    """
+    Need to find coordinates of hairs in cartesian axis this requires solving
+    
+    dx/ds= cos(θ) cos(φ)
+    dy/ds= − cos(θ) sin(φ), 
+    dzds= sin(θ),"""
+    
+    
+    dxds=np.cos(theta)*np.cos(phi)
+    dyds=-np.cos(theta)*np.sin(phi)
+    DZDS=np.sin(theta)
+    x=np.empty(100)
+    y=np.empty(100)
+    Z=np.empty(100)
+    ds=0.04
+    "starting postion of each har"
+    x[0]=x1[j]
+    y[0]=y1[j]
+    Z[0]=z11[j]
+    """I used the euler method to integrate the ODEs as it was the simples and easiest method
+    wih accurate solution for this simulation"""
+    for i in range(99):
+        x[i+1]=x[i]+ds*dxds[i]
+        y[i+1]=y[i]+ds*dyds[i]
+        Z[i+1]=Z[i]+ds*DZDS[i]
+    "append cartesian positions of all hairs to array for plotting"
+    hair_x_task5[:,j]=x
+    hair_y_task5[:,j]=y
+    hair_z_task5[:,j]=Z
+
+
+
+
+
+"Plot of 20 hairs with no wind"
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_x_task2, hair_z_task2,s=1)
+ax.plot(x1, x2)
+ax.set_title("20 hairs with no wind")
+ax.set_xlabel('X Label')
+ax.set_ylabel('Z Label')
+plt.show()
+
+
+"Plot of 20 hairs with wind"
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_x_task3, hair_z_task3,s=1)
+ax.plot(x1, x2)
+ax.set_title("20 hairs with wind")
+ax.set_xlabel('X axis')
+ax.set_ylabel('Z axis')
+plt.show()
+
+"Plot of 100 hairs with wind X,Z axis"
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_x_task5, hair_z_task5,s=1)
+ax.plot(x1, x2)
+ax.set_title("100 hairs with wind")
+ax.set_xlabel('X Label')
+ax.set_ylabel('Z Label')
+plt.show()
+
+"Plot of 100 hairs with wind Y,Z axis"
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+theta = np.linspace(0, 2*np.pi, 100)
+r=10
+x1 = r*np.cos(theta)
+x2 = r*np.sin(theta)
+ax.scatter(hair_y_task5, hair_z_task5,s=1)
+ax.plot(x1, x2)
+ax.set_title("100 hairs with wind")
+ax.set_xlabel('Y Label')
+ax.set_ylabel('Z Label')
+plt.show()
+
+
+"Plot of 100 hairs with wind X,Y,Z axis 3D axis"
+
 # Create a sphere
 r = 10
 pi = np.pi
@@ -101,34 +492,11 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 ax.plot_surface(
     x, y, z,  rstride=1, cstride=1, color='c', alpha=0.6, linewidth=0)
-
+ax.scatter(hair_x_task5,hair_y_task5,hair_z_task5, marker=".")
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
 plt.show()
-"""
-fig = plt.figure()
-ax = fig.add_subplot(111)
 
-theta = np.linspace(0, 2*np.pi, 100)
-r=10
-x1 = r*np.cos(theta)
-x2 = r*np.sin(theta)
-ax.scatter(hair_x, hair_z,s=1)
-ax.plot(x1, x2)
-ax.set_xlabel('X axis')
-ax.set_ylabel('Z y axis')
-plt.show()
 
-fig = plt.figure()
-ax = fig.add_subplot(111)
 
-theta = np.linspace(0, 2*np.pi, 100)
-r=10
-x1 = r*np.cos(theta)
-x2 = r*np.sin(theta)
-ax.scatter(hair_x_task3, hair_z_task3,s=1)
-ax.plot(x1, x2)
-ax.set_xlabel('X axis')
-ax.set_ylabel('Z y axis')
-plt.show()
