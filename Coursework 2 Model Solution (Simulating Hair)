@@ -1,0 +1,630 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Nov 19 09:13:27 2015
+
+@author: ih3
+
+The aim here is to solve the boundary value problem defined by equation (3).
+The boundary conditions are given by equations (2) and (4).
+Once the boundary value problem has been solved, we can then (in principle)
+solve the initial value problem for the coordinates, given by equation (5)
+with initial data from equation (1). The practical implementation can vary
+from these steps.
+
+There are four standard ways of solving BVPs:
+    1) Shooting
+    2) Finite difference relaxation
+    3) Function basis methods
+    4) Black box algorithms.
+The standard recommendation is to use shooting first, unless a useful black
+box is available. Shooting is expected to be quick to implement, especially
+when using black-boxes for solving the IVP and the root find. It should also be
+more accurate than finite differences. Function basis methods should be the 
+most accurate, but will be a lot more work to implement.
+
+The choice here was to use shooting, following this standard argument. Black
+boxes were used for the IVP and the root find, as they are robust and well
+tested. We would usually default to odeint for the IVP, and that has been good
+enough. For the root find we would usually use brentq - that's the recommended
+solver in scipy in the scalar case. However, the initial guess varies a lot
+depending on the initial angles, so it is easier to use the newton routine;
+this also extends directly to the fsolve routine in the 3d case where the root
+find is multi-dimensional.
+
+Note that in recent versions of scipy (essentially 2017 on) there is a black
+box solve_bvp function. This follows the Matlab black box routine, so does not
+behave in quite the fashion expected for other solvers. See the alternative
+file for this solution: note that it is just as sensitive as the shooting
+method to the initial guess.
+
+The initial guess is crucially important for this problem as there are multiple
+solutions. Some of the solutions are clearly not what you would expect for hair
+modelling, but in other cases, particularly with wind, there is no clear reason
+for choosing one solution over another. For this reason the approach taken
+below is simplified, and may not always give the 'best' solution.
+
+The guess in the case with no wind is to look at the initial theta angle. Note
+that the phi solution is identically zero whenever there is no wind, and we
+only look for solutions with a small amount of wind, so initial guesses for
+phi will always be zero. For the initial guess for d_theta, we note that on the
+'right' side of the head (theta < pi/2) we expect theta to decrease as we move
+along the hair: in other words, we expect d_theta to be negative, and probably
+small. On the 'left' side of the head we expect theta to increase as we move
+along the hair: by symmetry, we choose d_theta to be positive, with the same
+magnitude as on the other side. Brief experimentation in this case shows that
+values of magnitude between about 0.4 and 0.8 work, so 0.5 (a 'round number')
+was used.
+
+For the case with wind, we first solve without any wind at all. We can then use
+the true solution without wind as a guess for the solution with wind. This
+gives a solution that 'looks reasonable' in most cases.
+
+Note that when the parameters are changed away from those specified on the
+sheet (eg, the hair length L is increased to >5, or the wind is made much
+stronger) then the solution no longer looks at all reasonable. This is in part
+due to the simplified model for each individual hair, where the stiffness
+(which is given by the Young's modulus, which is essentially part of the f_g
+coefficient) is assumed to be constant along the hair. To improve the model
+we would need to modify the equation, probably by effectively reducing the
+stiffness with the coordinate s. However, realistic hair CGI now uses much
+better models than this.
+
+Final note: the implementation below codes the RHS function for the IVP four
+times. This is supposedly for efficiency: when solving the BVPs you do not need
+to solve for the coordinates, and when solving the 2d case you do not need to
+solve for phi. This may not be the most maintainable code. In many ways it
+would be better to code the function once, in the most general case, and use it
+in all cases with the additional terms 'switched off' (by passing appropriate
+initial data).
+"""
+
+from __future__ import division
+import numpy
+from matplotlib import pyplot
+from matplotlib import rcParams
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.integrate import odeint
+from scipy.optimize import newton, fsolve
+
+rcParams['font.family'] = 'serif'
+rcParams['font.size'] = 16
+rcParams['figure.figsize'] = (12,6)
+
+printing = False
+
+
+def check_scalar(x, name):
+    """
+    Utility function that checks if x is a real, finite scalar.
+    
+    Parameters
+    ----------
+    
+    x : scalar
+        Parameter to check
+    name : string
+        Variable name the caller has, to make the assert statement nicer
+    """
+    assert((not numpy.any(numpy.isnan(x))) and\
+    numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x)) and\
+    numpy.isscalar(x)), \
+    "{} must be real, finite, scalar, and not NaN".format(name)
+
+
+def check_vector(x, length, name):
+    """
+    Utility function that checks if x is a real, finite vector.
+    
+    Parameters
+    ----------
+    
+    x : scalar
+        Parameter to check
+    length : integer
+        Expected length of the vector
+    name : string
+        Variable name the caller has, to make the assert statement nicer
+    """
+    assert((not numpy.any(numpy.isnan(x))) and\
+    numpy.all(numpy.isfinite(x)) and\
+    numpy.all(numpy.isreal(x))), \
+    "{} must be real, finite and not NaN".format(name)
+    assert(len(x)==length), "Expected {} to have length {}".format(name,
+          length)
+
+
+def ivp_theta(z, s, f_g, f_x):
+    """
+    Solve the initial value problem for theta only (equation (3a) from the sheet).
+    
+    Parameters
+    ----------
+    
+    z : vector
+        The state vector ([theta, d theta / d s])
+    s : scalar
+        Parameter along the curve
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    
+    Returns
+    -------
+    
+    dzds : vector
+        The derivative of z wrt s
+    """
+    check_vector(z, 2, 'z')
+    check_scalar(s, 's')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    
+    dzds = numpy.zeros_like(z)
+    theta = z[0]
+    dzds[0] = z[1]
+    dzds[1] = f_g * s * numpy.cos(theta) + f_x * s * numpy.sin(theta)
+    return dzds
+
+
+def ivp_angle(z, s, f_g, f_x):
+    """
+    Solve the initial value problem for theta, phi (equation (3) from the sheet).
+    
+    Parameters
+    ----------
+    
+    z : vector
+        The state vector ([theta, d theta / d s, phi, d phi / d s])
+    s : scalar
+        Parameter along the curve
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    
+    Returns
+    -------
+    
+    dzds : vector
+        The derivative of z wrt s
+    """
+    check_vector(z, 4, 'z')
+    check_scalar(s, 's')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    
+    dzds = numpy.zeros_like(z)
+    theta = z[0]
+    phi = z[2]
+    dzds[0] = z[1]
+    dzds[1] = f_g * s * numpy.cos(theta) + f_x * s * numpy.cos(phi) * numpy.sin(theta)
+    dzds[2] = z[3]
+    dzds[3] = - f_x * s * numpy.sin(phi) * numpy.sin(theta)
+    return dzds
+
+
+def ivp_theta_xz(z, s, f_g, f_x):
+    """
+    Solve the initial value problem for theta (equation (3a) from the sheet),
+    combined with the initial value problem for the (x, z) coordinates 
+    (equation (5a, c) from the sheet).
+    
+    Parameters
+    ----------
+    
+    z : vector
+        The state vector ([theta, d theta / d s, x, y, z])
+    s : scalar
+        Parameter along the curve
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    
+    Returns
+    -------
+    
+    dzds : vector
+        The derivative of z wrt s_hat
+    """
+    check_vector(z, 4, 'z')
+    check_scalar(s, 's')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    
+    dzds = numpy.zeros_like(z)
+    theta = z[0]
+    dzds[0] = z[1]
+    dzds[1] = f_g * s * numpy.cos(theta) + f_x * s * numpy.sin(theta)
+    dzds[2] = numpy.cos(theta)
+    dzds[3] = numpy.sin(theta)
+    return dzds
+
+
+def ivp_all(z, s, f_g, f_x):
+    """
+    Solve the initial value problem for theta, phi (equation (3) from the sheet),
+    combined with the initial value problem for the (x, y, z) coordinates 
+    (equation (5a, c) from the sheet).
+    
+    Parameters
+    ----------
+    
+    z : vector
+        The state vector ([theta, d theta / d s, phi, d phi / d s, x, y, z])
+    s : scalar
+        Parameter along the curve
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    
+    Returns
+    -------
+    
+    dzds : vector
+        The derivative of z wrt s_hat
+    """
+    check_vector(z, 7, 'z')
+    check_scalar(s, 's')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    
+    dzds = numpy.zeros_like(z)
+    theta = z[0]
+    phi = z[2]
+    dzds[0] = z[1]
+    dzds[1] = f_g * s * numpy.cos(theta) + f_x * s * numpy.cos(phi) * numpy.sin(theta)
+    dzds[2] = z[3]
+    dzds[3] = - f_x * s * numpy.sin(phi) * numpy.sin(theta)
+    dzds[4] = numpy.cos(theta) * numpy.cos(phi)
+    dzds[5] = -numpy.cos(theta) * numpy.sin(phi)
+    dzds[6] = numpy.sin(theta)
+    return dzds
+
+
+def shooting_function_theta(d_angle_0_guess, f_g, f_x, theta_0):
+    """
+    Find the error in the solution to the BVP from solving the IVP.
+    
+    Parameters
+    ----------
+    
+    d_angle_0_guess : scalar
+        The guess for d theta / d s at s = 0
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    theta_0 : scalar
+        Angle that the hair meets the head (parameter)
+    
+    Returns
+    -------
+    
+    residual : scalar
+        Error in the solution of the BVP
+        
+    Notes
+    -----
+    
+    This is required to solve for the angle, so calls `ivp_angle`.
+    """
+    check_scalar(d_angle_0_guess, 'd_angle_0_guess')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    check_scalar(theta_0, 'theta_0')
+    
+    args=(f_g, f_x)
+    s_values = numpy.linspace(0, L, 100)
+    sol_guess = odeint(ivp_theta, [theta_0, d_angle_0_guess],
+                       s_values, args=args)
+    return sol_guess[-1, 1]
+
+
+def shooting_function_all(d_angle_0_guess, f_g, f_x, theta_0, phi_0):
+    """
+    Find the error in the solution to the BVP from solving the IVP.
+    
+    Parameters
+    ----------
+    
+    d_angle_0_guess : scalar
+        The guess for the derivatives of the angles at s = 0
+    f_g : scalar
+        Force due to gravity (parameter)
+    f_x : scalar
+        Force due to wind (parameter)
+    theta_0, phi_0 : scalar
+        Angles that the hair meets the head (parameter)
+    
+    Returns
+    -------
+    
+    residual : scalar
+        Error in the solution of the BVP
+        
+    Notes
+    -----
+    
+    This is required to solve for the angle, so calls `ivp_angle`.
+    """
+    check_vector(d_angle_0_guess, 2, 'd_angle_0_guess')
+    check_scalar(f_g, 'f_g')
+    check_scalar(f_x, 'f_x')
+    check_scalar(theta_0, 'theta_0')
+    check_scalar(phi_0, 'phi_0')
+    
+    args=(f_g, f_x)
+    s_values = numpy.linspace(0, L, 100)
+    sol_guess = odeint(ivp_angle, [theta_0, d_angle_0_guess[0], phi_0, d_angle_0_guess[1]],
+                       s_values, args=args)
+    return [sol_guess[-1, 1], sol_guess[-1, 3]]
+
+
+def hair_bvp_2d(theta_0_all,  L, R, f_x, f_g=0.1):
+    """
+    Solving the BVP to model hair. Assumes \phi_0 = 0.
+    
+    Parameters
+    ----------
+    
+    theta_0_all : vector
+        Angles at which the N_hairs hairs meet the head.
+    L : scalar
+        Length of the hairs (all the same)
+    R : scalar
+        Radius of the head
+    f_x : scalar
+        Force due to wind (parameter)
+    f_g : scalar
+        Force due to gravity (parameter)
+        
+    Returns
+    -------
+    
+    x : vector
+        x coordinates of the hairs
+    z : vector
+        z coordinates of the hairs
+    """
+    N_hairs = len(theta_0_all)
+    check_vector(theta_0_all, N_hairs, 'theta_0_all')
+    check_scalar(L, 'L')
+    check_scalar(R, 'R')
+    check_scalar(f_x, 'f_x')
+    check_scalar(f_g, 'f_g')
+    
+    s_values = numpy.linspace(0, L, 100)
+    x = numpy.zeros((N_hairs, len(s_values)))
+    z = numpy.zeros((N_hairs, len(s_values)))
+
+    for hair in range(N_hairs):
+        theta_0 = theta_0_all[hair]
+        x_0 = R * numpy.cos(theta_0)
+        z_0 = R * numpy.sin(theta_0)
+        
+        # Guess process: this is the key difficulty.
+        # We note that finding a good guess for the shooting method is hard,
+        # as the appropriate guesses change with each hair, and there is a
+        # large jump as theta_0 goes across pi/2.
+        #
+        # This is particularly awkward when some wind is introduced.
+        #
+        # The following method firstly finds the "physically reasonable"
+        # solution when there is no wind, by restricting the angles to try
+        # depending on theta_0. It then adds the wind back in and uses the
+        # no wind solution as a guess for Newton's method.
+        if theta_0 < numpy.pi / 2:
+            d_angle_0_guess = -1/2
+        else:
+            d_angle_0_guess = 1/2
+        # Solve without wind
+        d_angles_0_no_wind = newton(shooting_function_theta, d_angle_0_guess,
+                                    args=(f_g, 0, theta_0))
+        # Add the wind in
+        d_angles_0 = newton(shooting_function_theta, d_angles_0_no_wind,
+                            args=(f_g, f_x, theta_0))
+        
+        # Solve for everything
+        sol_all = odeint(ivp_theta_xz, 
+                         [theta_0, d_angles_0, x_0, z_0],
+                         s_values, args=(f_g, f_x))
+        x[hair, :] = sol_all[:, 2]
+        z[hair, :] = sol_all[:, 3]
+            
+    return x, z
+
+def hair_bvp(theta_0_all, phi_0_all, L, R, f_x, f_g=0.1):
+    """
+    Solving the BVP to model hair.
+    
+    Parameters
+    ----------
+    
+    theta_0_all : vector
+        Angles at which the N_hairs hairs meet the head.
+    phi_0_all : vector
+        Azimuthal angles at which the N_hairs hairs meet the head.
+    L : scalar
+        Length of the hairs (all the same)
+    R : scalar
+        Radius of the head
+    f_x : scalar
+        Force due to wind (parameter)
+    f_g : scalar
+        Force due to gravity (parameter)
+        
+    Returns
+    -------
+    
+    x : vector
+        x coordinates of the hairs
+    y : vector
+        y coordinates of the hairs
+    z : vector
+        z coordinates of the hairs
+    """
+    N_hairs = len(theta_0_all)
+    check_vector(theta_0_all, N_hairs, 'theta_0_all')
+    check_vector(phi_0_all, N_hairs, 'phi_0_all')
+    check_scalar(L, 'L')
+    check_scalar(R, 'R')
+    check_scalar(f_x, 'f_x')
+    check_scalar(f_g, 'f_g')
+    
+    f_g = 0.1
+    
+    s_values = numpy.linspace(0, L, 100)
+    x = numpy.zeros((N_hairs, len(s_values)))
+    y = numpy.zeros((N_hairs, len(s_values)))
+    z = numpy.zeros((N_hairs, len(s_values)))
+
+    for hair in range(N_hairs):
+        theta_0 = theta_0_all[hair]
+        phi_0 = phi_0_all[hair]
+        x_0 = R * numpy.cos(theta_0) * numpy.cos(phi_0)
+        y_0 = -R * numpy.cos(theta_0) * numpy.sin(phi_0)
+        z_0 = R * numpy.sin(theta_0)
+        
+        # Guess process: this is the key difficulty.
+        # We note that finding a good guess for the shooting method is hard,
+        # as the appropriate guesses change with each hair, and there is a
+        # large jump as theta_0 goes across pi/2.
+        #
+        # This is particularly awkward when some wind is introduced.
+        #
+        # The following method firstly finds the "physically reasonable"
+        # solution when there is no wind, by restricting the angles to try
+        # depending on theta_0. It then adds the wind back in and uses the
+        # no wind solution as a guess for Newton's method.
+        if theta_0 < numpy.pi / 2:
+            d_angle_0_guess = [-1/2, 0]
+        else:
+            d_angle_0_guess = [1/2, 0]
+        # No wind
+        d_angles_0_no_wind = fsolve(shooting_function_all, d_angle_0_guess,
+                                    args=(f_g, f_x, theta_0, phi_0))
+        # Add the wind in
+        d_angles_0 = fsolve(shooting_function_all, d_angles_0_no_wind,
+                                    args=(f_g, f_x, theta_0, phi_0))
+        
+        # Solve for everything
+        sol_all = odeint(ivp_all, 
+                         [theta_0, d_angles_0[0], phi_0, d_angles_0[1], x_0, y_0, z_0],
+                         s_values, args=(f_g, f_x))
+        x[hair, :] = sol_all[:, 4]
+        y[hair, :] = sol_all[:, 5]
+        z[hair, :] = sol_all[:, 6]
+            
+    return x, y, z
+
+
+if __name__ == "__main__":
+    
+    # Fixed parameters
+    L = 4
+    R = 10
+    
+    # Easy case
+    theta_0_all = numpy.linspace(0, numpy.pi, 20)
+    f_x = 0
+    
+    x, z = hair_bvp_2d(theta_0_all, L, R, f_x)
+    
+    theta_head = numpy.linspace(0, 2*numpy.pi)
+    x_head = R*numpy.cos(theta_head)
+    z_head = R*numpy.sin(theta_head)
+    
+    fig = pyplot.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(x_head, z_head, 'b-', lw=2)
+    for x_hair, z_hair in zip(x, z):
+        ax.plot(x_hair, z_hair, 'k-', lw=1)
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$z$")
+    ax.set_title("Task 2 - no wind")
+    ax.set_aspect('equal')
+    if printing:
+        pyplot.savefig('Cwk2_Task2_NoWind_xz.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    
+    # Windy case
+    theta_0_all = numpy.linspace(0, numpy.pi, 20)
+    f_x = 0.1
+    
+    x, z = hair_bvp_2d(theta_0_all, L, R, f_x)
+    
+    theta_head = numpy.linspace(0, 2*numpy.pi)
+    x_head = R*numpy.cos(theta_head)
+    z_head = R*numpy.sin(theta_head)
+    
+    fig = pyplot.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(x_head, z_head, 'b-', lw=2)
+    for x_hair, z_hair in zip(x, z):
+        ax.plot(x_hair, z_hair, 'k-', lw=1)
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$z$")
+    ax.set_title(r"Task 3 - wind $f_x={}$".format(f_x))
+    ax.set_aspect('equal')
+    if printing:
+        pyplot.savefig('Cwk2_Task3_Wind_xz.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    
+    # 3d case with wind
+    n_sphere = 10
+    theta_0_lots = numpy.linspace(0, 0.49*numpy.pi, n_sphere)
+    phi_0_lots = numpy.linspace(0, numpy.pi, n_sphere)
+    f_x = 0.05
+    T, P = numpy.meshgrid(theta_0_lots, phi_0_lots)
+    theta_0_all = numpy.reshape(T, (n_sphere**2,))
+    phi_0_all = numpy.reshape(P, (n_sphere**2,))
+    
+    x, y, z = hair_bvp(theta_0_all, phi_0_all, L, R, f_x)
+    
+    fig = pyplot.figure()
+    ax1 = fig.add_subplot(121)
+    ax1.plot(x_head, z_head, 'b-', lw=2)
+    for x_hair, z_hair in zip(x, z):
+        ax1.plot(x_hair, z_hair, 'k-', lw=1)
+    ax1.set_xlabel(r"$x$")
+    ax1.set_ylabel(r"$z$")
+    ax1.set_title(r"Task 5, $x, z$ plane - wind $f_x={}$".format(f_x))
+    ax1.set_aspect('equal')
+    ax2 = fig.add_subplot(122)
+    ax2.plot(x_head, z_head, 'b-', lw=2)
+    for y_hair, z_hair in zip(y, z):
+        ax2.plot(y_hair, z_hair, 'k-', lw=1)
+    ax2.set_xlabel(r"$y$")
+    ax2.set_ylabel(r"$z$")
+    ax2.set_title(r"Task 5, $y, z$ plane - wind $f_x={}$".format(f_x))
+    ax2.set_aspect('equal')
+    fig.tight_layout()
+    if printing:
+        pyplot.savefig('Cwk2_Task5_Wind_xz_yz.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
+    
+    fig = pyplot.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for x_hair, y_hair, z_hair in zip(x, y, z):
+        ax.plot(x_hair, y_hair, z_hair, 'k-', lw=1)
+    ax.initial_azim = 200
+    ax.inital_elev = 10
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$y$")
+    ax.set_zlabel(r"$z$")
+    ax.set_title(r"Task 5, 3d - wind $f_x={}$".format(f_x))
+    if printing:
+        pyplot.savefig('Cwk2_Task5_Wind_3d.png', format='png')
+        pyplot.close()
+    else:
+        pyplot.show()
